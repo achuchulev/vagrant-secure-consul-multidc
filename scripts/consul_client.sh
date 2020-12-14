@@ -80,6 +80,7 @@ EOF
 EOF
 
   TOKEN=`cat /vagrant/token/consul-clients.txt`
+  DNS_TOKEN=`cat /vagrant/token/dns-requests-token.txt`
   cat <<EOF > /etc/consul.d/acl.hcl
 "acl" = {
   "default_policy" = "deny"
@@ -88,6 +89,7 @@ EOF
 
   "tokens" = {
     "agent" = "$TOKEN"
+    "default" = "$DNS_TOKEN"
   }
 }
 EOF
@@ -96,9 +98,11 @@ EOF
   systemctl start consul
   systemctl status consul
 
-  #systemd-resolved setup
+  # Forward DNS for Consul Service Discovery
+  # systemd-resolved setup
   echo -e "DNS=127.0.0.1 \nDomains=~consul" >> /etc/systemd/resolved.conf
   iptables -t nat -A OUTPUT -d localhost -p udp -m udp --dport 53 -j REDIRECT --to-ports 8600
   iptables -t nat -A OUTPUT -d localhost -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 8600
   service systemd-resolved restart
+  
 }

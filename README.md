@@ -1,2 +1,1 @@
-# vagrant-secure-consul-multidc
-Example of consul multi DC deployment with Vagrant
+# Sample code to deploy Consul multi DC deployment with Vagrant

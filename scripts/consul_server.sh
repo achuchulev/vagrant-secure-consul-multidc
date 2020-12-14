@@ -208,7 +208,7 @@ node_prefix "consul-client" {
   policy = "write"
 }
 EOF
-      consul acl policy create -name consul-clients -rules @consul-clients-policy.hcl
+      consul acl policy create -name "consul-clients" -rules @consul-clients-policy.hcl
       consul acl token create -description "consul clients agent token" -policy-name consul-clients | grep "SecretID:" | cut -c15- | tr -d '[:space:]' > /vagrant/token/consul-clients.txt
   
       # Replication ACL token
@@ -223,19 +223,52 @@ service_prefix "" {
 }
 EOF
 
-      consul acl policy create -name replication -rules @consul-replication-policy.hcl
+      consul acl policy create -name "replication" -rules @consul-replication-policy.hcl
       consul acl token create -description "consul replication token" -policy-name replication | grep "SecretID:" | cut -c15- | tr -d '[:space:]' > /vagrant/token/consul-replication-token.txt
     
       TOKEN=`cat /vagrant/token/consul-servers.txt`
       consul acl set-agent-token agent "$TOKEN"
+    
+    # DNS request token
+    cat <<EOF > dns-request-policy.hcl
+  ## dns-request-policy.hcl
+
+node_prefix "" {
+  policy = "read"
+}
+service_prefix "" {
+  policy = "read"
+}
+
+# only needed if using prepared queries
+query_prefix "" {
+  policy = "read"
+}
+EOF
+      consul acl policy create -name "dns-requests" -rules @dns-request-policy.hcl
+      consul acl token create -description "Token for DNS Requests" -policy-name dns-requests | grep "SecretID:" | cut -c15- | tr -d '[:space:]' > /vagrant/token/dns-requests-token.txt
+      DNS_TOKEN=`cat /vagrant/token/dns-requests-token.txt`
+      consul acl set-agent-token default "$DNS_TOKEN"
     else
       export CONSUL_HTTP_TOKEN=`cat /vagrant/token/consul-master-token.txt` # bootstrap token
       TOKEN=`cat /vagrant/token/consul-servers.txt`
       consul acl set-agent-token agent "$TOKEN"
+      DNS_TOKEN=`cat /vagrant/token/dns-requests-token.txt`
+      consul acl set-agent-token default "$DNS_TOKEN"
     fi
   else
     export CONSUL_HTTP_TOKEN=`cat /vagrant/token/consul-master-token.txt` # bootstrap token
     REPLICATION_TOKEN=`cat /vagrant/token/consul-replication-token.txt`
     consul acl set-agent-token replication "$REPLICATION_TOKEN"
+    DNS_TOKEN=`cat /vagrant/token/dns-requests-token.txt`
+    consul acl set-agent-token default "$DNS_TOKEN"
   fi
+
+  # Forward DNS for Consul Service Discovery
+  # systemd-resolved setup
+  echo -e "DNS=127.0.0.1 \nDomains=~consul" >> /etc/systemd/resolved.conf
+  iptables -t nat -A OUTPUT -d localhost -p udp -m udp --dport 53 -j REDIRECT --to-ports 8600
+  iptables -t nat -A OUTPUT -d localhost -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 8600
+  service systemd-resolved restart
+  
 }

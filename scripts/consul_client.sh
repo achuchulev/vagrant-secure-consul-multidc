@@ -6,6 +6,7 @@ client_index=$2
 ip_range=$3
 consul_server_count=$4
 
+# Exit if any of the intermediate steps fail
 set -x
 
 which curl wget unzip jq dig &>/dev/null || {

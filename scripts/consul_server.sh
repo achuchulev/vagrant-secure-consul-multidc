@@ -1,5 +1,6 @@
 #!/usr/bin/env bash
 
+# Exit if any of the intermediate steps fail
 set -x
 
 which curl wget unzip jq dig &>/dev/null || {

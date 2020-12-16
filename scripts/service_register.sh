@@ -1,5 +1,8 @@
 #!/usr/bin/env bash
+
+# Exit if any of the intermediate steps fail
 set -x
+
 dc_index=$1
 
 export DEBIAN_FRONTEND=noninteractive

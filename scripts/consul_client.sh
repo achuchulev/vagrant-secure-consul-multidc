@@ -6,7 +6,6 @@ client_index=$2
 ip_range=$3
 consul_server_count=$4
 
-# Exit if any of the intermediate steps fail
 set -x
 
 which curl wget unzip jq dig &>/dev/null || {
@@ -15,10 +14,17 @@ which curl wget unzip jq dig &>/dev/null || {
   apt-get install --no-install-recommends -y curl wget unzip jq dnsutils
 }
 
-CONSUL_VERSION=$(curl -sL https://releases.hashicorp.com/consul/index.json | jq -r '.versions[].version' | sort -V | egrep -v 'ent|beta|rc|alpha' | tail -n1)
+# Use custom consul version
+CONSUL_VERSION="1.9.2+ent"
 
-#beta version
-#CONSUL_VERSION=$(curl -sL https://releases.hashicorp.com/consul/index.json | jq -r '.versions[].version' | sort -V | grep -v 'ent|beta' | tail -n1)
+# latest consul release
+#CONSUL_VERSION=$(curl -sL https://releases.hashicorp.com/consul/index.json | jq -r '.versions[].version' | sort -V | grep -v 'beta' | grep -v 'rc' | grep -v 'ent' | tail -n1)
+
+# latest consul ent release
+#CONSUL_VERSION=$(curl -sL https://releases.hashicorp.com/consul/index.json | jq -r '.versions[].version' | sort -V | grep 'ent' | grep -v 'beta' | grep -v 'rc' | tail -n1)
+
+# latest consul beta release
+#CONSUL_VERSION=$(curl -sL https://releases.hashicorp.com/consul/index.json | jq -r '.versions[].version' | sort -V | grep 'beta' | grep -v 'ent' | grep -v 'rc' | tail -n1)
 
 which consul &>/dev/null || {
   echo Installing Consul version: ${CONSUL_VERSION}
@@ -83,10 +89,13 @@ EOF
   TOKEN=`cat /vagrant/token/consul-clients.txt`
   DNS_TOKEN=`cat /vagrant/token/dns-requests-token.txt`
   cat <<EOF > /etc/consul.d/acl.hcl
+# If using Consul service mesh, below should be set for the upgrade
+enable_central_service_config = true #  This defaults to false in versions of Consul prior to 1.9.0, and defaults to true in Consul 1.9.0 and later. 
 "acl" = {
-  "default_policy" = "deny"
-  "enable_token_persistence" = true
   "enabled" = true
+  "default_policy" = "deny"
+  "down_policy" = "extend-cache" # default
+  "enable_token_persistence" = true
 
   "tokens" = {
     "agent" = "$TOKEN"
@@ -105,5 +114,4 @@ EOF
   iptables -t nat -A OUTPUT -d localhost -p udp -m udp --dport 53 -j REDIRECT --to-ports 8600
   iptables -t nat -A OUTPUT -d localhost -p tcp -m tcp --dport 53 -j REDIRECT --to-ports 8600
   service systemd-resolved restart
-  
 }

@@ -1,6 +1,5 @@
 #!/usr/bin/env bash
 
-# Exit if any of the intermediate steps fail
 set -x
 
 which curl wget unzip jq dig &>/dev/null || {
@@ -17,11 +16,17 @@ ip_range=$3
 consul_server_count=$4
 dc=$5
 
-# latest consul release
-CONSUL_VERSION=$(curl -sL https://releases.hashicorp.com/consul/index.json | jq -r '.versions[].version' | sort -V | egrep -v 'ent|beta|rc|alpha' | tail -n1)
+# Use custom consul version
+CONSUL_VERSION="1.9.2+ent"
 
-# latest consul beta release
-#CONSUL_VERSION=$(curl -sL https://releases.hashicorp.com/consul/index.json | jq -r '.versions[].version' | sort -V | grep -v 'ent|beta' | tail -n1)
+# Use latest consul release
+#CONSUL_VERSION=$(curl -sL https://releases.hashicorp.com/consul/index.json | jq -r '.versions[].version' | sort -V | grep -v 'beta' | grep -v 'rc' | grep -v 'ent' | tail -n1)
+
+# Use latest consul ent release
+#CONSUL_VERSION=$(curl -sL https://releases.hashicorp.com/consul/index.json | jq -r '.versions[].version' | sort -V | grep 'ent' | grep -v 'beta' | grep -v 'rc' | tail -n1)
+
+# Use latest consul beta release
+#CONSUL_VERSION=$(curl -sL https://releases.hashicorp.com/consul/index.json | jq -r '.versions[].version' | sort -V | grep 'beta' | grep -v 'ent' | grep -v 'rc' | tail -n1)
 
 which consul &>/dev/null || {
   echo Installing Consul version: ${CONSUL_VERSION}
@@ -72,11 +77,17 @@ auto_encrypt = {
 
 autopilot = {
   cleanup_dead_servers       = true,
-  last_contact_threshold     = "200ms",
-  max_trailing_logs          = 250,
-  server_stabilization_time  = "10s",
+  last_contact_threshold     = "200ms", # default value
+  max_trailing_logs          = 250, # default value
+  server_stabilization_time  = "10s", # default value
+  #upgrade_version_tag        = "build" # enterprise only feature
+  #redundancy_zone_tag        = "zone" # enterprise only feature
 }
-node_meta = { },
+
+node_meta {
+  #build = "0.0.1"
+  #zone = "east-1a"
+}
 
 connect = {
   enabled = true
@@ -86,13 +97,13 @@ EOF
   # check if we create the first server && dc
   if [[ $dc == 0 ]]; then
     cat <<EOF > /etc/consul.d/acl.hcl
+"primary_datacenter" = "$dc_name"
 "acl" = {
+  "enabled" = true
   "default_policy" = "deny"
   "down_policy" = "extend-cache"
   "enable_token_persistence" = true
-  "enabled" = true
 }
-"primary_datacenter" = "$dc_name"
 EOF
     if [[ $server == 0 ]]; then
       # write the IPs of primary DC for wan_join
@@ -134,14 +145,14 @@ EOF
     PRIMARY_DC=`cat /vagrant/conf/primary_dc.txt`
     PRIMARY_DC_WAN_IPS=`cat /vagrant/conf/wan_join.txt`
     cat <<EOF > /etc/consul.d/acl.hcl
-"primary_datacenter" = "$PRIMARY_DC"
 "retry_join_wan" = [$PRIMARY_DC_WAN_IPS]
+"primary_datacenter" = "$PRIMARY_DC"
 "acl" = {
+  "enabled" = true
   "default_policy" = "deny"
-  "down_policy" = "extend-cache"
+  "down_policy" = "extend-cache" # default
   "enable_token_persistence" = true
   "enable_token_replication" = true
-  "enabled" = true
 }
 EOF
   fi
@@ -188,7 +199,7 @@ EOF
         mkdir -p /vagrant/token
       fi
       # end cleanup
-
+      sleep 5
       consul acl bootstrap | grep "SecretID:" | cut -c15- | tr -d '[:space:]' > /vagrant/token/consul-master-token.txt
 
       export CONSUL_HTTP_TOKEN=`cat /vagrant/token/consul-master-token.txt` # bootstrap token
